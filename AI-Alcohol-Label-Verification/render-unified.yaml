@@ -9,8 +9,6 @@ services:
         value: "22.13.0"
       - key: OCR_SERVICE_URL
         value: "http://localhost:5001"
-      - key: DATABASE_URL
-        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: BUILT_IN_FORGE_API_URL

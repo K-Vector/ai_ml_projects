@@ -4,9 +4,20 @@ import axios, { type AxiosInstance } from "axios";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
-import type { User } from "../../drizzle/schema";
-import * as db from "../db";
 import { ENV } from "./env";
+
+// User type definition (previously from drizzle schema)
+export type User = {
+  id?: number;
+  openId: string;
+  email: string | null;
+  name: string | null;
+  loginMethod: string | null;
+  role: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+  lastSignedIn?: Date;
+};
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -266,38 +277,24 @@ class SDKServer {
       throw ForbiddenError("Invalid session cookie");
     }
 
-    const sessionUserId = session.openId;
-    const signedInAt = new Date();
-    let user = await db.getUserByOpenId(sessionUserId);
-
-    // If user not in DB, sync from OAuth server automatically
-    if (!user) {
-      try {
-        const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
-        await db.upsertUser({
-          openId: userInfo.openId,
-          name: userInfo.name || null,
-          email: userInfo.email ?? null,
-          loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-          lastSignedIn: signedInAt,
-        });
-        user = await db.getUserByOpenId(userInfo.openId);
-      } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
-      }
+    // Get user info from OAuth server using JWT
+    try {
+      const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
+      const signedInAt = new Date();
+      
+      // Return user object from OAuth info (no database storage)
+      return {
+        openId: userInfo.openId,
+        name: userInfo.name || null,
+        email: userInfo.email ?? null,
+        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
+        role: userInfo.openId === ENV.ownerOpenId ? 'admin' : null,
+        lastSignedIn: signedInAt,
+      };
+    } catch (error) {
+      console.error("[Auth] Failed to get user info from OAuth:", error);
+      throw ForbiddenError("Failed to get user info");
     }
-
-    if (!user) {
-      throw ForbiddenError("User not found");
-    }
-
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
-
-    return user;
   }
 }
 
